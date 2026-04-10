@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>油耗与驾驶能效记录</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3347;
+      --accent: #4f8ef7;
+      --accent2: #34d399;
+      --danger: #f87171;
+      --warn: #fbbf24;
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --radius: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,.4);
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    button { cursor: pointer; border: none; outline: none; font-family: inherit; }
+
+    /* ── Layout ── */
+    #app { display: flex; flex-direction: column; min-height: 100vh; }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: .5px; }
+    header h1 span { color: var(--accent); }
+
+    nav {
+      display: flex;
+      gap: 4px;
+    }
+    nav button {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: .85rem;
+      font-weight: 600;
+      background: transparent;
+      color: var(--text2);
+      transition: background .15s, color .15s;
+    }
+    nav button.active, nav button:hover {
+      background: var(--surface2);
+      color: var(--text);
+    }
+    nav button.active { color: var(--accent); }
+
+    main { flex: 1; max-width: 760px; margin: 0 auto; width: 100%; padding: 20px 16px 40px; }
+
+    /* ── Pages ── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: .8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text2);
+      margin-bottom: 16px;
+    }
+
+    /* ── Form ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 500px) { .form-grid { grid-template-columns: 1fr; } }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full { grid-column: 1 / -1; }
+    label { font-size: .82rem; color: var(--text2); font-weight: 600; }
+    input[type="text"], input[type="number"], input[type="datetime-local"], textarea, select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: .95rem;
+      width: 100%;
+      transition: border-color .15s;
+    }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 72px; font-family: inherit; }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .toggle-label { font-size: .95rem; color: var(--text); }
+    .switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      transition: background .2s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 2px; top: 2px;
+      background: var(--text2);
+      border-radius: 50%;
+      transition: transform .2s, background .2s;
+    }
+    .switch input:checked + .slider { background: var(--accent); border-color: var(--accent); }
+    .switch input:checked + .slider::before { transform: translateX(20px); background: #fff; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: .9rem;
+      font-weight: 600;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { opacity: .9; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+    .btn-danger:hover { background: rgba(248,113,113,.1); }
+    .btn-sm { padding: 6px 12px; font-size: .8rem; border-radius: 6px; }
+    .btn-full { width: 100%; }
+
+    /* ── Stat cards ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      text-align: center;
+    }
+    .stat-value { font-size: 1.8rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+    .stat-value.green { color: var(--accent2); }
+    .stat-value.warn { color: var(--warn); }
+    .stat-label { font-size: .75rem; color: var(--text2); margin-top: 4px; }
+
+    /* ── History timeline ── */
+    .timeline { display: flex; flex-direction: column; gap: 12px; }
+    .entry-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .entry-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      gap: 8px;
+    }
+    .entry-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .entry-date { font-size: .85rem; color: var(--text2); }
+    .badge {
+      font-size: .72rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+    .badge-fuel { background: rgba(79,142,247,.15); color: var(--accent); }
+    .badge-full { background: rgba(52,211,153,.15); color: var(--accent2); }
+    .badge-no-fuel { background: var(--surface2); color: var(--text2); }
+    .entry-odo { font-weight: 700; font-size: 1rem; }
+    .entry-actions { display: flex; gap: 6px; }
+    .entry-body {
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .entry-kv { display: flex; flex-direction: column; gap: 2px; }
+    .entry-kv .k { font-size: .72rem; color: var(--text2); }
+    .entry-kv .v { font-size: .92rem; font-weight: 600; }
+    .entry-kv .v.highlight { color: var(--accent); }
+    .entry-kv .v.green { color: var(--accent2); }
+    .entry-kv .v.warn { color: var(--warn); }
+    .entry-notes {
+      padding: 8px 16px 12px;
+      font-size: .82rem;
+      color: var(--text2);
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.6);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 540px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+      z-index: 1;
+    }
+    .modal-header h2 { font-size: 1rem; }
+    .modal-close {
+      background: transparent;
+      color: var(--text2);
+      font-size: 1.4rem;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+    .modal-close:hover { color: var(--text); background: var(--surface2); }
+    .modal-body { padding: 20px; }
+    .modal-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    /* ── Confirm dialog ── */
+    .confirm-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.7);
+      z-index: 300;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .confirm-overlay.open { display: flex; }
+    .confirm-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      max-width: 340px;
+      width: 100%;
+      text-align: center;
+    }
+    .confirm-box h3 { margin-bottom: 8px; }
+    .confirm-box p { color: var(--text2); font-size: .9rem; margin-bottom: 20px; }
+    .confirm-btns { display: flex; gap: 10px; justify-content: center; }
+
+    /* ── Charts ── */
+    .chart-container { position: relative; height: 220px; }
+
+    /* ── Misc ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--text2);
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-state p { font-size: .9rem; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .section-header h2 { font-size: 1.05rem; font-weight: 700; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+    .text-muted { color: var(--text2); font-size: .85rem; }
+    .mt-8 { margin-top: 8px; }
+    .mt-12 { margin-top: 12px; }
+    .mt-16 { margin-top: 16px; }
+    .flex-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* quick tags */
+    .tag-group { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .tag-btn {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: .78rem;
+      background: var(--surface2);
+      color: var(--text2);
+      border: 1px solid var(--border);
+      transition: all .15s;
+    }
+    .tag-btn.selected { background: rgba(79,142,247,.15); color: var(--accent); border-color: var(--accent); }
+    .tag-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: .875rem;
+      z-index: 999;
+      transition: transform .3s ease;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>⛽ <span>油耗</span>能效记录</h1>
+    <nav>
+      <button class="active" data-page="input" onclick="showPage('input')">录入</button>
+      <button data-page="history" onclick="showPage('history')">历史</button>
+      <button data-page="stats" onclick="showPage('stats')">看板</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ══════════ INPUT PAGE ══════════ -->
+    <div id="page-input" class="page active">
+      <div class="card">
+        <div class="card-title">里程信息</div>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label for="f-time">时间戳</label>
+            <input type="datetime-local" id="f-time" />
+          </div>
+          <div class="form-group">
+            <label for="f-odo">当前总里程 (km) *</label>
+            <input type="number" id="f-odo" placeholder="如：12345" min="0" step="0.1" />
+          </div>
+          <div class="form-group">
+            <label for="f-trip">本次行驶里程 (km)</label>
+            <input type="number" id="f-trip" placeholder="如：85.6" min="0" step="0.1" />
+          </div>
+          <div class="form-group full">
+            <label for="f-range">表显剩余里程 (km)</label>
+            <input type="number" id="f-range" placeholder="如：320" min="0" step="1" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">加油信息</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="f-fuel">加油量 (L)</label>
+            <input type="number" id="f-fuel" placeholder="0 = 未加油" min="0" step="0.01" value="0" />
+          </div>
+          <div class="form-group">
+            <label for="f-cost">加油总金额 (元)</label>
+            <input type="number" id="f-cost" placeholder="选填" min="0" step="0.01" />
+          </div>
+          <div class="form-group full">
+            <div class="toggle-row">
+              <span class="toggle-label">🔑 本次已加满（触发真实油耗计算）</span>
+              <label class="switch">
+                <input type="checkbox" id="f-full" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">路况备注</div>
+        <div class="form-group">
+          <label>快捷标签</label>
+          <div class="tag-group" id="tag-group">
+            <button class="tag-btn" onclick="toggleTag(this)">市区拥堵</button>
+            <button class="tag-btn" onclick="toggleTag(this)">高速</button>
+            <button class="tag-btn" onclick="toggleTag(this)">郊区</button>
+            <button class="tag-btn" onclick="toggleTag(this)">山路</button>
+            <button class="tag-btn" onclick="toggleTag(this)">开空调</button>
+            <button class="tag-btn" onclick="toggleTag(this)">雨天</button>
+            <button class="tag-btn" onclick="toggleTag(this)">重载</button>
+            <button class="tag-btn" onclick="toggleTag(this)">夜间</button>
+          </div>
+        </div>
+        <div class="form-group mt-12">
+          <label for="f-notes">自定义备注</label>
+          <textarea id="f-notes" placeholder="可记录额外情况…"></textarea>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" onclick="saveEntry()">保存记录</button>
+    </div>
+
+    <!-- ══════════ HISTORY PAGE ══════════ -->
+    <div id="page-history" class="page">
+      <div class="section-header">
+        <h2>历史记录</h2>
+        <div class="flex-row">
+          <button class="btn btn-secondary btn-sm" onclick="exportCSV()">📥 导出 CSV</button>
+        </div>
+      </div>
+      <div id="timeline" class="timeline"></div>
+    </div>
+
+    <!-- ══════════ STATS PAGE ══════════ -->
+    <div id="page-stats" class="page">
+      <div class="section-header">
+        <h2>能效看板</h2>
+      </div>
+      <div id="stats-grid" class="stats-grid"></div>
+
+      <div class="card mt-16">
+        <div class="card-title">真实油耗趋势 (L/100km)</div>
+        <div class="chart-container">
+          <canvas id="chart-consumption"></canvas>
+        </div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="card-title">续航达成率趋势 (%)</div>
+        <div class="chart-container">
+          <canvas id="chart-range"></canvas>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ══ Edit Modal ══ -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>编辑记录</h2>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="card-title" style="margin-bottom:12px">里程信息</div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label for="e-time">时间戳</label>
+          <input type="datetime-local" id="e-time" />
+        </div>
+        <div class="form-group">
+          <label for="e-odo">当前总里程 (km) *</label>
+          <input type="number" id="e-odo" min="0" step="0.1" />
+        </div>
+        <div class="form-group">
+          <label for="e-trip">本次行驶里程 (km)</label>
+          <input type="number" id="e-trip" min="0" step="0.1" />
+        </div>
+        <div class="form-group full">
+          <label for="e-range">表显剩余里程 (km)</label>
+          <input type="number" id="e-range" min="0" step="1" />
+        </div>
+      </div>
+      <hr class="divider" />
+      <div class="card-title" style="margin-bottom:12px">加油信息</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="e-fuel">加油量 (L)</label>
+          <input type="number" id="e-fuel" min="0" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label for="e-cost">总金额 (元)</label>
+          <input type="number" id="e-cost" min="0" step="0.01" />
+        </div>
+        <div class="form-group full">
+          <div class="toggle-row">
+            <span class="toggle-label">本次已加满</span>
+            <label class="switch">
+              <input type="checkbox" id="e-full" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <hr class="divider" />
+      <div class="form-group">
+        <label for="e-notes">备注</label>
+        <textarea id="e-notes"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEditModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Confirm Dialog ══ -->
+<div class="confirm-overlay" id="confirm-dialog">
+  <div class="confirm-box">
+    <h3>确认删除</h3>
+    <p>此操作不可撤销，确定要删除这条记录吗？</p>
+    <div class="confirm-btns">
+      <button class="btn btn-secondary" onclick="closeConfirm()">取消</button>
+      <button class="btn btn-danger" id="confirm-ok">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Toast ══ -->
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+//  Storage helpers
+// ═══════════════════════════════════════════
+const STORE_KEY = 'fuel_entries_v1';
+
+function loadEntries() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveEntries(entries) {
+  localStorage.setItem(STORE_KEY, JSON.stringify(entries));
+}
+
+// ═══════════════════════════════════════════
+//  Calculation engine
+// ═══════════════════════════════════════════
+
+/**
+ * For a given entry index, compute:
+ *  - realConsumption  (L/100km) — needs a prior "full tank" record
+ *  - rangeAccuracy    (%) — needs a prior record with a remaining range value
+ *  - costPerKm        (yuan/km)
+ *
+ * Entries are sorted newest-first in UI, but the engine receives
+ * the full sorted-oldest-first array + index within that array.
+ */
+function computeMetrics(entries, idx) {
+  const entry = entries[idx];
+  const metrics = { realConsumption: null, rangeAccuracy: null, costPerKm: null };
+
+  // ── Real consumption ──
+  // Sum fuel from (last full-tank before this entry, exclusive) up to and including this entry.
+  // Then divide by odometer difference.
+  let prevFullIdx = null;
+  for (let i = idx - 1; i >= 0; i--) {
+    if (entries[i].isFull) { prevFullIdx = i; break; }
+  }
+
+  if (prevFullIdx !== null && entry.isFull) {
+    const odoDiff = entry.odo - entries[prevFullIdx].odo;
+    if (odoDiff > 0) {
+      let totalFuel = 0;
+      for (let i = prevFullIdx + 1; i <= idx; i++) {
+        totalFuel += (entries[i].fuel || 0);
+      }
+      metrics.realConsumption = (totalFuel / odoDiff) * 100;
+    }
+  }
+
+  // ── Range accuracy ──
+  // Compare actual trip distance vs. indicated range drop
+  if (idx > 0) {
+    const prev = entries[idx - 1];
+    if (
+      entry.trip != null && entry.trip > 0 &&
+      prev.remaining != null && entry.remaining != null
+    ) {
+      const indicatedDrop = prev.remaining - entry.remaining;
+      if (indicatedDrop > 0) {
+        metrics.rangeAccuracy = (entry.trip / indicatedDrop) * 100;
+      }
+    }
+  }
+
+  // ── Cost per km ──
+  if (idx > 0 && entry.cost > 0) {
+    const odoDiff = entry.odo - entries[idx - 1].odo;
+    if (odoDiff > 0) {
+      metrics.costPerKm = entry.cost / odoDiff;
+    }
+  }
+
+  return metrics;
+}
+
+/**
+ * Return summary stats across all entries.
+ */
+function computeStats(entries) {
+  const sorted = [...entries].sort((a, b) => a.ts - b.ts);
+
+  const consumptions = [];
+  const accuracies   = [];
+
+  sorted.forEach((_, i) => {
+    const m = computeMetrics(sorted, i);
+    if (m.realConsumption != null) consumptions.push(m.realConsumption);
+    if (m.rangeAccuracy   != null) accuracies.push(m.rangeAccuracy);
+  });
+
+  const avg = arr => arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
+
+  return {
+    totalEntries:       sorted.length,
+    avgConsumption:     avg(consumptions),
+    lastConsumption:    consumptions.length ? consumptions[consumptions.length - 1] : null,
+    avgRangeAccuracy:   avg(accuracies),
+    lastRangeAccuracy:  accuracies.length ? accuracies[accuracies.length - 1] : null,
+    totalFuel:          sorted.reduce((s, e) => s + (e.fuel || 0), 0),
+    totalCost:          sorted.reduce((s, e) => s + (e.cost || 0), 0),
+    consumptions,
+    accuracies,
+    sortedEntries: sorted,
+  };
+}
+
+// ═══════════════════════════════════════════
+//  Navigation
+// ═══════════════════════════════════════════
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(`page-${name}`).classList.add('active');
+  document.querySelector(`nav button[data-page="${name}"]`).classList.add('active');
+
+  if (name === 'history') renderHistory();
+  if (name === 'stats')   renderStats();
+}
+
+// ═══════════════════════════════════════════
+//  Input form
+// ═══════════════════════════════════════════
+function initForm() {
+  // Set datetime-local to now (local time)
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString().slice(0, 16);
+  document.getElementById('f-time').value = local;
+}
+
+function toggleTag(btn) {
+  btn.classList.toggle('selected');
+}
+
+function getSelectedTags() {
+  return [...document.querySelectorAll('#tag-group .tag-btn.selected')]
+    .map(b => b.textContent).join('、');
+}
+
+function saveEntry() {
+  const odoVal = document.getElementById('f-odo').value.trim();
+  if (!odoVal) { showToast('⚠️ 请填写当前总里程'); return; }
+
+  const timeVal = document.getElementById('f-time').value;
+  const ts = timeVal ? new Date(timeVal).getTime() : Date.now();
+
+  const tags  = getSelectedTags();
+  const notes = document.getElementById('f-notes').value.trim();
+  const notesAll = [tags, notes].filter(Boolean).join(' | ');
+
+  const entry = {
+    id:        Date.now().toString(36) + Math.random().toString(36).slice(2),
+    ts,
+    odo:       parseFloat(odoVal),
+    trip:      parseFloatOrNull(document.getElementById('f-trip').value),
+    remaining: parseFloatOrNull(document.getElementById('f-range').value),
+    fuel:      parseFloat(document.getElementById('f-fuel').value) || 0,
+    isFull:    document.getElementById('f-full').checked,
+    cost:      parseFloatOrNull(document.getElementById('f-cost').value),
+    notes:     notesAll,
+  };
+
+  const entries = loadEntries();
+  entries.push(entry);
+  saveEntries(entries);
+
+  showToast('✅ 记录已保存');
+  resetForm();
+}
+
+function resetForm() {
+  ['f-trip', 'f-range', 'f-fuel', 'f-cost', 'f-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('f-fuel').value = '0';
+  document.getElementById('f-full').checked = false;
+  document.querySelectorAll('#tag-group .tag-btn').forEach(b => b.classList.remove('selected'));
+  initForm();
+}
+
+function parseFloatOrNull(val) {
+  const v = parseFloat(val);
+  return isNaN(v) ? null : v;
+}
+
+// ═══════════════════════════════════════════
+//  History
+// ═══════════════════════════════════════════
+function renderHistory() {
+  const container = document.getElementById('timeline');
+  const entries = loadEntries().sort((a, b) => b.ts - a.ts);
+
+  if (!entries.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📋</div>
+        <p>还没有记录，去录入页添加第一条数据吧！</p>
+      </div>`;
+    return;
+  }
+
+  // Build sorted ascending for metric calc
+  const sorted = [...entries].sort((a, b) => a.ts - b.ts);
+
+  container.innerHTML = entries.map(entry => {
+    const idx = sorted.findIndex(e => e.id === entry.id);
+    const m   = computeMetrics(sorted, idx);
+    return buildEntryCard(entry, m);
+  }).join('');
+}
+
+function buildEntryCard(entry, m) {
+  const date     = new Date(entry.ts);
+  const dateStr  = date.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const hasFuel  = entry.fuel > 0;
+
+  let badges = '';
+  if (hasFuel) {
+    badges += `<span class="badge badge-fuel">+${entry.fuel.toFixed(2)}L</span>`;
+    if (entry.isFull) badges += `<span class="badge badge-full">已加满</span>`;
+  } else {
+    badges += `<span class="badge badge-no-fuel">未加油</span>`;
+  }
+
+  const kvs = [
+    { k: '总里程', v: `${entry.odo.toLocaleString()} km` },
+    { k: '本次行驶', v: entry.trip != null ? `${entry.trip} km` : '—' },
+    { k: '表显剩余', v: entry.remaining != null ? `${entry.remaining} km` : '—' },
+    {
+      k: '真实油耗',
+      v: m.realConsumption != null ? `${m.realConsumption.toFixed(2)} L/100km` : '—',
+      cls: m.realConsumption != null ? (m.realConsumption > 10 ? 'warn' : 'highlight') : ''
+    },
+    {
+      k: '续航达成率',
+      v: m.rangeAccuracy != null ? `${m.rangeAccuracy.toFixed(1)}%` : '—',
+      cls: m.rangeAccuracy != null ? (m.rangeAccuracy >= 90 ? 'green' : m.rangeAccuracy >= 75 ? 'highlight' : 'warn') : ''
+    },
+    {
+      k: '每公里花费',
+      v: m.costPerKm != null ? `${m.costPerKm.toFixed(3)} 元/km` : '—',
+      cls: ''
+    },
+  ];
+
+  const kvsHtml = kvs.map(kv =>
+    `<div class="entry-kv">
+      <span class="k">${kv.k}</span>
+      <span class="v ${kv.cls || ''}">${kv.v}</span>
+    </div>`
+  ).join('');
+
+  const notesHtml = entry.notes
+    ? `<div class="entry-notes">📝 ${escapeHtml(entry.notes)}</div>`
+    : '';
+
+  return `
+    <div class="entry-card" id="card-${entry.id}">
+      <div class="entry-header">
+        <div class="entry-meta">
+          <span class="entry-date">🕐 ${dateStr}</span>
+          ${badges}
+        </div>
+        <div class="entry-actions">
+          <button class="btn btn-secondary btn-sm" onclick="openEditModal('${entry.id}')">编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="confirmDelete('${entry.id}')">删除</button>
+        </div>
+      </div>
+      <div class="entry-body">${kvsHtml}</div>
+      ${notesHtml}
+    </div>`;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+// ═══════════════════════════════════════════
+//  Edit
+// ═══════════════════════════════════════════
+let editingId = null;
+
+function openEditModal(id) {
+  const entries = loadEntries();
+  const entry   = entries.find(e => e.id === id);
+  if (!entry) return;
+
+  editingId = id;
+
+  const localStr = new Date(entry.ts - new Date().getTimezoneOffset() * 60000)
+    .toISOString().slice(0, 16);
+
+  document.getElementById('e-time').value    = localStr;
+  document.getElementById('e-odo').value     = entry.odo;
+  document.getElementById('e-trip').value    = entry.trip ?? '';
+  document.getElementById('e-range').value   = entry.remaining ?? '';
+  document.getElementById('e-fuel').value    = entry.fuel ?? 0;
+  document.getElementById('e-cost').value    = entry.cost ?? '';
+  document.getElementById('e-full').checked  = !!entry.isFull;
+  document.getElementById('e-notes').value   = entry.notes ?? '';
+
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  editingId = null;
+}
+
+function saveEdit() {
+  if (!editingId) return;
+  const odoVal = document.getElementById('e-odo').value.trim();
+  if (!odoVal) { showToast('⚠️ 请填写当前总里程'); return; }
+
+  const timeVal = document.getElementById('e-time').value;
+  const ts = timeVal ? new Date(timeVal).getTime() : Date.now();
+
+  const entries = loadEntries();
+  const idx     = entries.findIndex(e => e.id === editingId);
+  if (idx === -1) return;
+
+  entries[idx] = {
+    ...entries[idx],
+    ts,
+    odo:       parseFloat(odoVal),
+    trip:      parseFloatOrNull(document.getElementById('e-trip').value),
+    remaining: parseFloatOrNull(document.getElementById('e-range').value),
+    fuel:      parseFloat(document.getElementById('e-fuel').value) || 0,
+    isFull:    document.getElementById('e-full').checked,
+    cost:      parseFloatOrNull(document.getElementById('e-cost').value),
+    notes:     document.getElementById('e-notes').value.trim(),
+  };
+
+  saveEntries(entries);
+  closeEditModal();
+  showToast('✅ 记录已更新');
+  renderHistory();
+}
+
+// ═══════════════════════════════════════════
+//  Delete
+// ═══════════════════════════════════════════
+let pendingDeleteId = null;
+
+function confirmDelete(id) {
+  pendingDeleteId = id;
+  document.getElementById('confirm-dialog').classList.add('open');
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-dialog').classList.remove('open');
+  pendingDeleteId = null;
+}
+
+document.getElementById('confirm-ok').addEventListener('click', () => {
+  if (!pendingDeleteId) return;
+  const entries = loadEntries().filter(e => e.id !== pendingDeleteId);
+  saveEntries(entries);
+  closeConfirm();
+  showToast('🗑️ 已删除');
+  renderHistory();
+});
+
+// ═══════════════════════════════════════════
+//  Stats & Charts
+// ═══════════════════════════════════════════
+let chartConsumption = null;
+let chartRange       = null;
+
+function renderStats() {
+  const entries = loadEntries();
+  const stats   = computeStats(entries);
+
+  // ── KPI cards ──
+  const grid = document.getElementById('stats-grid');
+
+  const kpis = [
+    {
+      label: '历史平均油耗',
+      value: stats.avgConsumption != null ? `${stats.avgConsumption.toFixed(2)}` : '—',
+      unit: 'L/100km',
+      cls: stats.avgConsumption != null && stats.avgConsumption > 10 ? 'warn' : ''
+    },
+    {
+      label: '最近一次油耗',
+      value: stats.lastConsumption != null ? `${stats.lastConsumption.toFixed(2)}` : '—',
+      unit: 'L/100km',
+      cls: stats.lastConsumption != null && stats.lastConsumption > 10 ? 'warn' : ''
+    },
+    {
+      label: '平均续航达成率',
+      value: stats.avgRangeAccuracy != null ? `${stats.avgRangeAccuracy.toFixed(1)}` : '—',
+      unit: '%',
+      cls: stats.avgRangeAccuracy != null ? (stats.avgRangeAccuracy >= 90 ? 'green' : stats.avgRangeAccuracy >= 75 ? '' : 'warn') : ''
+    },
+    {
+      label: '最近续航达成率',
+      value: stats.lastRangeAccuracy != null ? `${stats.lastRangeAccuracy.toFixed(1)}` : '—',
+      unit: '%',
+      cls: stats.lastRangeAccuracy != null ? (stats.lastRangeAccuracy >= 90 ? 'green' : stats.lastRangeAccuracy >= 75 ? '' : 'warn') : ''
+    },
+    {
+      label: '累计加油量',
+      value: `${stats.totalFuel.toFixed(2)}`,
+      unit: 'L',
+      cls: ''
+    },
+    {
+      label: '累计油费',
+      value: stats.totalCost > 0 ? `${stats.totalCost.toFixed(2)}` : '—',
+      unit: '元',
+      cls: ''
+    },
+    {
+      label: '总记录条数',
+      value: `${stats.totalEntries}`,
+      unit: '条',
+      cls: ''
+    },
+  ];
+
+  grid.innerHTML = kpis.map(k => `
+    <div class="stat-card">
+      <div class="stat-value ${k.cls}">${k.value}</div>
+      <div class="stat-label">${k.label}<br/><small>${k.unit}</small></div>
+    </div>`).join('');
+
+  // ── Charts ──
+  const sorted = stats.sortedEntries;
+
+  // Build per-entry labels + metric arrays (same order as sorted)
+  const labels        = [];
+  const consumptionData = [];
+  const rangeData       = [];
+
+  sorted.forEach((entry, i) => {
+    const m = computeMetrics(sorted, i);
+    const d = new Date(entry.ts);
+    const lbl = `${d.getMonth() + 1}/${d.getDate()}`; // getMonth() is 0-based
+    if (m.realConsumption != null) {
+      labels.push(lbl);
+      consumptionData.push(+m.realConsumption.toFixed(2));
+    }
+    if (m.rangeAccuracy != null) {
+      rangeData.push({ x: lbl, y: +m.rangeAccuracy.toFixed(1) });
+    }
+  });
+
+  const chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { color: '#2e3347' } },
+      y: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { color: '#2e3347' } },
+    },
+    elements: { point: { radius: 4 } },
+  };
+
+  // Consumption chart
+  if (chartConsumption) chartConsumption.destroy();
+  const ctxC = document.getElementById('chart-consumption').getContext('2d');
+  if (consumptionData.length > 0) {
+    chartConsumption = new Chart(ctxC, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: consumptionData,
+          borderColor: '#4f8ef7',
+          backgroundColor: 'rgba(79,142,247,.15)',
+          fill: true,
+          tension: .35,
+        }]
+      },
+      options: { ...chartDefaults }
+    });
+  } else {
+    ctxC.canvas.parentElement.innerHTML = '<div class="empty-state" style="padding:32px"><div class="icon">📉</div><p>暂无油耗数据（需要至少两条"已加满"记录）</p></div>';
+  }
+
+  // Range accuracy chart
+  if (chartRange) chartRange.destroy();
+  const ctxR = document.getElementById('chart-range').getContext('2d');
+  if (rangeData.length > 0) {
+    const rangeLabels = rangeData.map(d => d.x);
+    const rangeValues = rangeData.map(d => d.y);
+    chartRange = new Chart(ctxR, {
+      type: 'line',
+      data: {
+        labels: rangeLabels,
+        datasets: [{
+          data: rangeValues,
+          borderColor: '#34d399',
+          backgroundColor: 'rgba(52,211,153,.15)',
+          fill: true,
+          tension: .35,
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        scales: {
+          ...chartDefaults.scales,
+          y: {
+            ...chartDefaults.scales.y,
+            min: 0,
+            max: 130,
+          }
+        }
+      }
+    });
+  } else {
+    ctxR.canvas.parentElement.innerHTML = '<div class="empty-state" style="padding:32px"><div class="icon">📊</div><p>暂无续航达成率数据</p></div>';
+  }
+}
+
+// ═══════════════════════════════════════════
+//  CSV Export
+// ═══════════════════════════════════════════
+function exportCSV() {
+  const entries = loadEntries().sort((a, b) => a.ts - b.ts);
+  if (!entries.length) { showToast('⚠️ 没有数据可导出'); return; }
+
+  const headers = [
+    '时间戳', '总里程(km)', '本次行驶(km)', '表显剩余(km)',
+    '加油量(L)', '是否加满', '总金额(元)',
+    '真实油耗(L/100km)', '续航达成率(%)', '每公里花费(元/km)',
+    '备注'
+  ];
+
+  const rows = entries.map((entry, i) => {
+    const m = computeMetrics(entries, i);
+    return [
+      new Date(entry.ts).toLocaleString('zh-CN'),
+      entry.odo,
+      entry.trip ?? '',
+      entry.remaining ?? '',
+      entry.fuel,
+      entry.isFull ? '是' : '否',
+      entry.cost ?? '',
+      m.realConsumption != null ? m.realConsumption.toFixed(2) : '',
+      m.rangeAccuracy   != null ? m.rangeAccuracy.toFixed(1)   : '',
+      m.costPerKm       != null ? m.costPerKm.toFixed(3)       : '',
+      entry.notes ?? '',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+  });
+
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `fuel_records_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('📥 CSV 已导出');
+}
+
+// ═══════════════════════════════════════════
+//  Toast
+// ═══════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+// ═══════════════════════════════════════════
+//  Close modals on overlay click
+// ═══════════════════════════════════════════
+document.getElementById('edit-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditModal();
+});
+document.getElementById('confirm-dialog').addEventListener('click', function(e) {
+  if (e.target === this) closeConfirm();
+});
+
+// ═══════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════
+initForm();
+</script>
+</body>
+</html>
